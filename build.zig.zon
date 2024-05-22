@@ -1,0 +1,15 @@
+.{
+    .name = "zig-learning",
+    .version = "0.0.0",
+
+    .dependencies = .{
+        .myutil = .{
+            .path = "./modules/myutil",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}
+
+// vim: set ft=zig
