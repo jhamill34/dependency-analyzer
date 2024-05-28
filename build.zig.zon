@@ -1,10 +1,13 @@
 .{
-    .name = "zig-learning",
+    .name = "dependency-analyzer",
     .version = "0.0.0",
 
     .dependencies = .{
-        .myutil = .{
-            .path = "./modules/myutil",
+        .@"gzip-library" = .{
+            .path = "./modules/gzip",
+        },
+        .@"bytecode-library" = .{
+            .path = "./modules/bytecode",
         },
     },
     .paths = .{
