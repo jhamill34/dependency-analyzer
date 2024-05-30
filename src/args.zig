@@ -9,8 +9,10 @@ pub const Args = struct {
             std.debug.panic("Not the correct number of arguments.", .{});
         }
 
-        const filename = alloc.dupe(u8, args[0]) catch {
-            std.debug.panic("Unable to copy memory.", .{});
+        const filename = alloc.dupe(u8, args[0]) catch |err| switch (err) {
+            std.mem.Allocator.Error.OutOfMemory => {
+                std.debug.panic("No memory available to allocate for filename", .{});
+            },
         };
 
         return Args{
