@@ -284,3 +284,24 @@ test "Simple Reader into buffer" {
     const zero = try reader.readNumber(u16);
     try testing.expect(zero == 0);
 }
+
+test "Jump Cursor around" {
+    var buffer: [4]u8 = undefined;
+
+    var data = [_]u8{
+        0x01, 0x00, 'H', 'e',
+        'l',  'l',  'o', 0x02,
+        0xab, 0xcd,
+    };
+    var testSeeker = TestSeeker.init(&data);
+
+    const readSeeker = (&testSeeker).reader();
+
+    var reader = ReadManager.init(readSeeker, &buffer);
+
+    const end = try readSeeker.getEndPos();
+    try reader.setCursor(end - 1);
+
+    const n1 = try reader.readNumber(u16);
+    try testing.expect(n1 == 0xcdab);
+}
