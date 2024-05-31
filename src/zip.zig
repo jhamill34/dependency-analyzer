@@ -6,6 +6,8 @@ const ReadManager = @import("./reader.zig").ReadManager;
 const ReadSeeker = @import("./reader.zig").ReadSeeker;
 const sliceToNumber = @import("./reader.zig").sliceToNumber;
 
+const deflate = @import("./gzip.zig").deflate;
+
 pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
     var buffer: [4096]u8 = undefined;
     var reader = ReadManager.init(readSeeker, &buffer);
@@ -36,7 +38,7 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
             print("  - {s} (size: {d}, method: {d})\n", .{ localFile.fileName.?, localFile.metadata.compressedSize, localFile.metadata.method });
 
             const rawData = try reader.readAlloc(alloc, localFile.metadata.compressedSize);
-            // TODO: run DEFLATE
+            deflate(rawData);
             alloc.free(rawData);
 
             localFile.deinit();
