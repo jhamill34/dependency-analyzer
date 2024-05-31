@@ -1,17 +1,19 @@
-const std = @import("std");
+const panic = @import("std").debug.panic;
+const testing = @import("std").testing;
+const mem = @import("std").mem;
 
 pub const Args = struct {
     filename: []const u8,
-    allocator: std.mem.Allocator,
+    allocator: mem.Allocator,
 
-    pub fn init(alloc: std.mem.Allocator, args: []const []const u8) Args {
+    pub fn init(alloc: mem.Allocator, args: []const []const u8) Args {
         if (args.len != 1) {
-            std.debug.panic("Not the correct number of arguments.", .{});
+            panic("Not the correct number of arguments.", .{});
         }
 
         const filename = alloc.dupe(u8, args[0]) catch |err| switch (err) {
-            std.mem.Allocator.Error.OutOfMemory => {
-                std.debug.panic("No memory available to allocate for filename", .{});
+            mem.Allocator.Error.OutOfMemory => {
+                panic("No memory available to allocate for filename", .{});
             },
         };
 
@@ -28,8 +30,8 @@ pub const Args = struct {
 
 test "parse arguments" {
     const args = [_][]const u8{"filename.txt"};
-    const parsedArgs = Args.init(std.testing.allocator, &args);
+    const parsedArgs = Args.init(testing.allocator, &args);
     defer parsedArgs.deinit();
 
-    try std.testing.expect(std.mem.eql(u8, parsedArgs.filename, "filename.txt"));
+    try testing.expect(mem.eql(u8, parsedArgs.filename, "filename.txt"));
 }

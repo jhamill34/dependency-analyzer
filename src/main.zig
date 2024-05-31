@@ -1,6 +1,6 @@
 const std = @import("std");
 const Args = @import("./args.zig").Args;
-const Reader = @import("./reader.zig").Reader;
+const ReadSeeker = @import("./reader.zig").ReadSeeker;
 
 const zip = @import("./zip.zig");
 
@@ -10,22 +10,14 @@ pub fn main() !void {
     const args = getArgs(alloc);
     defer args.deinit();
 
-    const file = std.fs.cwd().openFile(args.filename, .{ .mode = .read_only }) catch {
+    var file = std.fs.cwd().openFile(args.filename, .{ .mode = .read_only }) catch {
         std.debug.panic("Unable to open file", .{});
     };
+    defer file.close();
 
-    var buffer: [4096]u8 = undefined;
-    var reader = Reader.init(file, &buffer);
+    const readSeeker = FileReadSeeker.reader(&file);
 
-    const pos = try zip.findEndOfCentralDirectoryRecord(&reader);
-
-    std.debug.print("EOCD found at: {d}\n", .{pos});
-
-    const eocd = try zip.EndOfCentralDirectoryRecord.parse(&reader);
-
-    var string = std.ArrayList(u8).init(alloc);
-    try std.json.stringify(eocd, .{}, string.writer());
-    std.debug.print("{s}\n", .{string.items});
+    try zip.extractFromArchive(alloc, readSeeker);
 }
 
 fn getArgs(alloc: std.mem.Allocator) Args {
@@ -36,3 +28,29 @@ fn getArgs(alloc: std.mem.Allocator) Args {
 
     return Args.init(alloc, args[1..]);
 }
+
+const FileReadSeeker = struct {
+    fn reader(fileRef: *std.fs.File) ReadSeeker {
+        return ReadSeeker{
+            .ptr = fileRef,
+            .readFn = readFn,
+            .seekToFn = seekToFn,
+            .getEndPosFn = getEndPosFn,
+        };
+    }
+
+    fn readFn(ptr: *anyopaque, data: []u8) !usize {
+        const self: *const std.fs.File = @ptrCast(@alignCast(ptr));
+        return self.read(data);
+    }
+
+    fn seekToFn(ptr: *anyopaque, location: u64) !void {
+        const self: *const std.fs.File = @ptrCast(@alignCast(ptr));
+        return self.seekTo(location);
+    }
+
+    fn getEndPosFn(ptr: *anyopaque) !u64 {
+        const self: *const std.fs.File = @ptrCast(@alignCast(ptr));
+        return self.getEndPos();
+    }
+};
