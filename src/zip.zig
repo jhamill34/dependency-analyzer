@@ -12,7 +12,7 @@ const sliceToNumber = @import("./reader.zig").sliceToNumber;
 const BitBuffer = @import("./bitbuffer.zig").BitBuffer;
 const FileWriter = @import("./writer.zig").FileWriter;
 
-const deflate = @import("./gzip.zig").deflate;
+const inflate = @import("./gzip.zig").inflate;
 
 pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
     var buffer: [4096]u8 = undefined;
@@ -54,7 +54,7 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
                 rawData,
             );
 
-            try deflate(&bitbuffer, &writer);
+            try inflate(&bitbuffer, &writer);
 
             file.close();
             alloc.free(rawData);

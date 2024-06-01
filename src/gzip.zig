@@ -10,7 +10,7 @@ const EncodingMethod = enum(u32) {
     Reserved = 3,
 };
 
-pub fn deflate(buffer: *BitBuffer, writer: *Writer) !void {
+pub fn inflate(buffer: *BitBuffer, writer: *Writer) !void {
     const lastBlock = buffer.get(1);
     const encodingMethod: EncodingMethod = @enumFromInt(buffer.get(2));
 
@@ -21,18 +21,26 @@ pub fn deflate(buffer: *BitBuffer, writer: *Writer) !void {
     }
 
     switch (encodingMethod) {
-        .Raw => {
-            print("Writing raw data...");
-            _ = try writer.write(buffer.data);
-        },
-        .StaticHuffman => {
-            _ = try writer.write("Static huffman isn't implemented, skipping...\n");
-        },
-        .DynamicHuffman => {
-            _ = try writer.write("Dynamic huffman isn't implemented, skipping...\n");
-        },
+        .Raw => try raw_inflate(buffer, writer),
+        .StaticHuffman => try static_inflate(buffer, writer),
+        .DynamicHuffman => try dynamic_inflate(buffer, writer),
         else => {
             panic("Encoding method is reserved\n", .{});
         },
     }
+}
+
+fn raw_inflate(buffer: *BitBuffer, writer: *Writer) !void {
+    print("Writing raw data...", .{});
+    _ = try writer.write(buffer.data);
+}
+
+fn static_inflate(_: *BitBuffer, writer: *Writer) !void {
+    print("Static inflate...", .{});
+    _ = try writer.write("Static huffman isn't implemented, skipping...\n");
+}
+
+fn dynamic_inflate(_: *BitBuffer, writer: *Writer) !void {
+    print("Dynamic inflate...", .{});
+    _ = try writer.write("Dynamic huffman isn't implemented, skipping...\n");
 }
