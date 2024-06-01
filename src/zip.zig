@@ -2,9 +2,12 @@ const Allocator = @import("std").mem.Allocator;
 const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
 
+const ReadSeeker = @import("./io.zig").ReadSeeker;
+
 const ReadManager = @import("./reader.zig").ReadManager;
-const ReadSeeker = @import("./reader.zig").ReadSeeker;
 const sliceToNumber = @import("./reader.zig").sliceToNumber;
+
+const BitBuffer = @import("./bitbuffer.zig").BitBuffer;
 
 const deflate = @import("./gzip.zig").deflate;
 
@@ -38,7 +41,10 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
             print("  - {s} (size: {d}, method: {d})\n", .{ localFile.fileName.?, localFile.metadata.compressedSize, localFile.metadata.method });
 
             const rawData = try reader.readAlloc(alloc, localFile.metadata.compressedSize);
-            deflate(rawData);
+
+            var bitbuffer = BitBuffer.init(rawData);
+            deflate(&bitbuffer);
+
             alloc.free(rawData);
 
             localFile.deinit();

@@ -1,6 +1,6 @@
 const std = @import("std");
 const Args = @import("./args.zig").Args;
-const ReadSeeker = @import("./reader.zig").ReadSeeker;
+const ReadSeeker = @import("./io.zig").ReadSeeker;
 
 const zip = @import("./zip.zig");
 
