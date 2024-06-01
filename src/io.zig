@@ -16,3 +16,12 @@ pub const ReadSeeker = struct {
         return self.getEndPosFn(self.ptr);
     }
 };
+
+pub const Writer = struct {
+    ptr: *anyopaque,
+    writeFn: *const fn (ptr: *anyopaque, data: []const u8) anyerror!usize,
+
+    pub fn write(self: Writer, data: []const u8) !usize {
+        return self.writeFn(self.ptr, data);
+    }
+};

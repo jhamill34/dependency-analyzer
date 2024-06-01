@@ -1,6 +1,7 @@
 const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
 const BitBuffer = @import("./bitbuffer.zig").BitBuffer;
+const Writer = @import("./io.zig").Writer;
 
 const EncodingMethod = enum(u32) {
     Raw = 0,
@@ -9,7 +10,7 @@ const EncodingMethod = enum(u32) {
     Reserved = 3,
 };
 
-pub fn deflate(buffer: *BitBuffer) void {
+pub fn deflate(buffer: *BitBuffer, writer: *Writer) !void {
     const lastBlock = buffer.get(1);
     const encodingMethod: EncodingMethod = @enumFromInt(buffer.get(2));
 
@@ -21,13 +22,14 @@ pub fn deflate(buffer: *BitBuffer) void {
 
     switch (encodingMethod) {
         .Raw => {
-            print("Raw encoding isn't implemented, skipping...\n", .{});
+            print("Writing raw data...");
+            _ = try writer.write(buffer.data);
         },
         .StaticHuffman => {
-            print("Static huffman isn't implemented, skipping...\n", .{});
+            _ = try writer.write("Static huffman isn't implemented, skipping...\n");
         },
         .DynamicHuffman => {
-            print("Dynamic huffman isn't implemented, skipping...\n", .{});
+            _ = try writer.write("Dynamic huffman isn't implemented, skipping...\n");
         },
         else => {
             panic("Encoding method is reserved\n", .{});

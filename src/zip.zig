@@ -2,12 +2,15 @@ const Allocator = @import("std").mem.Allocator;
 const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
 
+const std = @import("std");
+
 const ReadSeeker = @import("./io.zig").ReadSeeker;
 
 const ReadManager = @import("./reader.zig").ReadManager;
 const sliceToNumber = @import("./reader.zig").sliceToNumber;
 
 const BitBuffer = @import("./bitbuffer.zig").BitBuffer;
+const FileWriter = @import("./writer.zig").FileWriter;
 
 const deflate = @import("./gzip.zig").deflate;
 
@@ -38,13 +41,22 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
             try reader.setCursor(record.metadata.relativeFileOffset);
             const localFile = try FileHeader.initFromReader(alloc, &reader);
 
-            print("  - {s} (size: {d}, method: {d})\n", .{ localFile.fileName.?, localFile.metadata.compressedSize, localFile.metadata.method });
+            print("{s} (size: {d}, method: {d})\n", .{ localFile.fileName.?, localFile.metadata.compressedSize, localFile.metadata.method });
+
+            const dirname = std.fs.path.dirname(localFile.fileName.?);
+            try std.fs.cwd().makePath(dirname.?);
+            var file = try std.fs.cwd().createFile(localFile.fileName.?, .{});
+
+            var writer = FileWriter.writer(&file);
 
             const rawData = try reader.readAlloc(alloc, localFile.metadata.compressedSize);
+            var bitbuffer = BitBuffer.init(
+                rawData,
+            );
 
-            var bitbuffer = BitBuffer.init(rawData);
-            deflate(&bitbuffer);
+            try deflate(&bitbuffer, &writer);
 
+            file.close();
             alloc.free(rawData);
 
             localFile.deinit();
