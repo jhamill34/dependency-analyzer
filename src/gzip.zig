@@ -75,24 +75,18 @@ fn dynamic_inflate(buffer: *BitBuffer, writer: *Writer) !void {
     _ = try writer.write("Dynamic huffman isn't implemented, skipping...\n");
 }
 
-const HuffmanNode = packed struct {
-    left: i32,
-    right: i32,
-};
-
-const INITIAL_HUFFMAN_CAPACITY = 8;
-
 const HuffmanTree = struct {
-    tree: []HuffmanNode,
-    end: usize,
+    tree: []i16,
+    end: u16,
     allocator: Allocator,
 
     const Self = @This();
 
     fn init(allocator: Allocator, lengths: []const u8) !HuffmanTree {
-        // Step 0: Allocate our huffman tree, this block of memory will be managed
+        // NOTE:
+        // Step 0 - Allocate our huffman tree, this block of memory will be managed
         // by this struct. We will dealocate this tree when `deinit` is called
-        const tree = try allocator.alloc(HuffmanNode, INITIAL_HUFFMAN_CAPACITY);
+        const tree = try allocator.alloc(i16, lengths.len * 2);
         var huff_tree = HuffmanTree{
             .tree = tree,
             .end = 0,
@@ -107,13 +101,15 @@ const HuffmanTree = struct {
     fn populate(self: *Self, lengths: []const u8) !void {
         const MAX_BITLENGTH = 16;
 
-        // Step 1: Count the number of each code's bitlength
+        // NOTE:
+        // Step 1 - Count the number of each code's bitlength
         var counts: [MAX_BITLENGTH]u8 = [_]u8{0} ** MAX_BITLENGTH;
         for (lengths) |len| {
             counts[len] += 1;
         }
 
-        // Step 2: Determine the starting number for each bit length
+        // NOTE:
+        // Step 2 - Determine the starting number for each bit length
         var code: u16 = 0;
         var nexts: [MAX_BITLENGTH]u16 = [_]u16{0} ** MAX_BITLENGTH;
         for (1..counts.len) |i| {
@@ -123,7 +119,8 @@ const HuffmanTree = struct {
             }
         }
 
-        // Step 3: Generate the actual codes
+        // NOTE:
+        // Step 3 - Generate the actual codes
         var generated_codes = try self.allocator.alloc(u16, lengths.len);
         defer self.allocator.free(generated_codes);
 
@@ -132,21 +129,47 @@ const HuffmanTree = struct {
             nexts[len] += 1;
         }
 
-        // Step 4: Insert the codes/literals into the huffman tree
-        try self.insert(HuffmanNode{ .left = 0, .right = 0 });
-
+        // NOTE:
+        // Step 4 - Insert the codes/literals into the huffman tree
+        try self.insert_node();
         for (generated_codes, 0..) |gen_code, i| {
             const bit_length = lengths[i];
-            for (0..bit_length) |offset| {
-                const val = (gen_code >> @truncate(bit_length - offset - 1)) & 1;
 
-                print("{d} ", .{val});
+            var tree_index: u16 = 0;
+            for (0..bit_length) |offset| {
+                if (tree_index >= self.end) {
+                    panic("Node doesn't exist", .{});
+                }
+
+                tree_index = tree_index + (gen_code >> @truncate(bit_length - offset - 1) & 1);
+
+                if (offset == (bit_length - 1)) {
+                    const literal: u16 = @truncate(i);
+                    self.tree[tree_index] = @bitCast(literal);
+                } else if (self.tree[tree_index] == -1) {
+                    self.tree[tree_index] = @bitCast(~self.end);
+                    try self.insert_node();
+                }
+
+                const symbol = self.tree[tree_index];
+
+                if (symbol < 0) {
+                    tree_index = @bitCast(~symbol);
+                } else if (offset < bit_length - 1) {
+                    panic("Unexpected terminating node", .{});
+                }
             }
+
             print("\n", .{});
         }
     }
 
-    fn insert(self: *Self, node: HuffmanNode) !void {
+    fn insert_node(self: *Self) !void {
+        try self.insert(-1);
+        try self.insert(-1);
+    }
+
+    fn insert(self: *Self, node: i16) !void {
         if (self.end == self.tree.len) {
             try self.resize();
         }
@@ -156,7 +179,7 @@ const HuffmanTree = struct {
     }
 
     fn resize(self: *Self) !void {
-        const new_tree = try self.allocator.alloc(HuffmanNode, self.tree.len * 2);
+        const new_tree = try self.allocator.alloc(i16, self.tree.len * 2);
         @memcpy(new_tree[0..self.tree.len], self.tree);
         self.allocator.free(self.tree);
         self.tree = new_tree;
@@ -174,15 +197,9 @@ test "Construct a huffman tree" {
     var tree = try HuffmanTree.init(testing.allocator, &lengths);
     defer tree.deinit();
 
-    try testing.expect(tree.end == 1);
-}
+    const expected_tree = [_]i16{ -3, -7, 5, -5, 0, 1, -9, -11, 2, 3, 4, -13, 6, 7 };
 
-test "Overflow math" {
-    const a: i32 = 0;
-
-    const b: i32 = ~@as(u32, a);
-
-    print("a=0x{x} b=0x{x}\n", .{ a, b });
-
-    try testing.expect(b == 0xffffffff);
+    for (0..tree.end) |i| {
+        try testing.expect(expected_tree[i] == tree.tree[i]);
+    }
 }
