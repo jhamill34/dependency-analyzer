@@ -1,7 +1,10 @@
 const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
+const Allocator = @import("std").mem.Allocator;
 const BitBuffer = @import("./bitbuffer.zig").BitBuffer;
 const Writer = @import("./io.zig").Writer;
+
+const testing = @import("std").testing;
 
 const EncodingMethod = enum(u32) {
     Raw = 0,
@@ -70,4 +73,37 @@ fn dynamic_inflate(buffer: *BitBuffer, writer: *Writer) !void {
     }
 
     _ = try writer.write("Dynamic huffman isn't implemented, skipping...\n");
+}
+
+const HuffmanNode = packed struct {
+    left: i32,
+    right: i32,
+};
+
+const HuffmanTree = struct {
+    tree: []HuffmanNode,
+    allocator: Allocator,
+
+    const Self = @This();
+
+    fn init(allocator: Allocator, _: []const u8) !HuffmanTree {
+        const tree = try allocator.alloc(HuffmanNode, 10);
+
+        return HuffmanTree{
+            .tree = tree,
+            .allocator = allocator,
+        };
+    }
+
+    fn deinit(self: Self) void {
+        self.allocator.free(self.tree);
+    }
+};
+
+test "Construct a huffman tree" {
+    // Based on the example given in RFC-1951
+    // Assumes that A=0, B=1, C=2, etc.
+    const lengths = [_]u8{ 3, 3, 3, 3, 3, 2, 4, 4 };
+    const result = try HuffmanTree.init(testing.allocator, &lengths);
+    defer result.deinit();
 }

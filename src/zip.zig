@@ -76,7 +76,7 @@ const FileHeaderMagic = 0x04034b50;
 const CentralDirectoryMagic = 0x02014b50;
 const EOCDMagic = 0x06054b50;
 
-const FileHeaderMetadata = struct {
+const FileHeaderMetadata = packed struct {
     minVersion: u16,
     flags: u16,
     method: u16,
@@ -125,7 +125,7 @@ const FileHeader = struct {
     }
 };
 
-const CentralDirectoryFileMetadata = struct {
+const CentralDirectoryFileMetadata = packed struct {
     versionMade: u16,
     versionNeeded: u16,
     flags: u16,
@@ -187,7 +187,7 @@ const CentralDirectoryFile = struct {
     }
 };
 
-const EOCDMetadata = struct {
+const EOCDMetadata = packed struct {
     currentDiskNumber: u16,
     centralDirectoryDiskNumber: u16,
     currentDiskRecordCount: u16,
