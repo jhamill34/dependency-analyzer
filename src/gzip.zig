@@ -40,28 +40,32 @@ fn static_inflate(_: *BitBuffer, writer: *Writer) !void {
     _ = try writer.write("Static huffman isn't implemented, skipping...\n");
 }
 
-const HCLEN_ORDER = [_]usize{ 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
+const HUFFMAN_CODE_LITERAL_ORDER = [_]usize{ 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
 
 fn dynamic_inflate(buffer: *BitBuffer, writer: *Writer) !void {
     print("Dynamic inflate...\n", .{});
 
-    const hlit = buffer.get(5) + 257;
-    const hdist = buffer.get(5) + 1;
-    const hclen = buffer.get(4) + 4;
+    const huffman_literal_count = buffer.get(5) + 257;
+    const huffman_distance_count = buffer.get(5) + 1;
+    const huffman_code_count = buffer.get(4) + 4;
 
-    print("HLIT={d} HDIST={d} HCLEN={d}\n", .{ hlit, hdist, hclen });
+    print("HLIT={d} HDIST={d} HCLEN={d}\n", .{
+        huffman_literal_count,
+        huffman_distance_count,
+        huffman_code_count,
+    });
 
-    var hclenLiterals: [19]u32 = undefined;
-    @memset(&hclenLiterals, 0);
+    var huffman_code_lengths: [HUFFMAN_CODE_LITERAL_ORDER.len]u32 = undefined;
+    @memset(&huffman_code_lengths, 0);
 
-    for (0..hclen) |i| {
+    for (0..huffman_code_count) |i| {
         const len = buffer.get(3);
-        const literalIndex = HCLEN_ORDER[i];
+        const literal_index = HUFFMAN_CODE_LITERAL_ORDER[i];
 
-        hclenLiterals[literalIndex] = len;
+        huffman_code_lengths[literal_index] = len;
     }
 
-    for (hclenLiterals, 0..) |len, i| {
+    for (huffman_code_lengths, 0..) |len, i| {
         print("  {d} {d}\n", .{ i, len });
     }
 
