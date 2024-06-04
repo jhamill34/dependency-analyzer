@@ -62,14 +62,56 @@ const ClassFile = struct {
     }
 };
 
+const ConstantType = enum(u8) {
+    Utf8 = 1,
+    Integer = 3,
+    Float = 4,
+    Long = 5,
+    Double = 6,
+    Class = 7,
+    String = 8,
+    Fieldref = 9,
+    Methodref = 10,
+    InterfaceMethodref = 11,
+    NameAndType = 12,
+    MethodHandle = 15,
+    MethodType = 16,
+    InvokeDynamic = 18,
+};
+
+const ConstantTypeInfo = union(enum) {
+    fn from(t: ConstantType) ConstantTypeInfo {
+        switch (t) {
+            .Utf8 => {},
+            .Integer => {},
+            .Float => {},
+            .Long => {},
+            .Double => {},
+            .Class => {},
+            .String => {},
+            .Fieldref => {},
+            .Methodref => {},
+            .InterfaceMethodref => {},
+            .NameAndType => {},
+            .MethodHandle => {},
+            .MethodType => {},
+            .InvokeDynamic => {},
+        }
+    }
+};
+
 const Constant = struct {
-    tag: u8,
+    tag: ConstantType,
+    info: ConstantTypeInfo,
 
     fn initFromReader(_: Allocator, r: *reader.ReadManager) !Constant {
-        const tag = try r.readBENumber(u8);
+        const tagNumber = try r.readBENumber(u8);
+        const tag: ConstantType = @enumFromInt(tagNumber);
+        const info = ConstantTypeInfo.from(tag);
 
         return Constant{
             .tag = tag,
+            .info = info,
         };
     }
 };
