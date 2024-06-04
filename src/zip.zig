@@ -12,7 +12,6 @@ const ReadManager = @import("reader.zig").ReadManager;
 const sliceToNumber = @import("reader.zig").sliceToNumber;
 
 const BitBuffer = @import("bitbuffer.zig").BitBuffer;
-const FileWriter = @import("writer.zig").FileWriter;
 
 const inflate = @import("deflate.zig").inflate;
 
@@ -39,6 +38,7 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
     }
 
     var rawData: ?[]u8 = null;
+    var output: ?[]u8 = null;
 
     // TODO: Can this be threaded?
     for (records) |record| {
@@ -50,11 +50,14 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
             // the arena allocator they'll get cleaned up at the end of this function.
             const localFile = try FileHeader.initFromReader(arena_allocator, &reader);
 
-            print("{s} (size: {d}, method: {d})\n", .{ localFile.fileName.?, localFile.metadata.compressedSize, localFile.metadata.method });
+            print("{s} (size: {d}, method: {d})\n", .{
+                localFile.fileName.?,
+                localFile.metadata.compressedSize,
+                localFile.metadata.method,
+            });
 
             var file = try createFile(localFile.fileName.?);
             defer file.close();
-            var writer = FileWriter.writer(&file);
 
             // NOTE: To limit the number of times we need to ask the heap for
             // memory we use a shared buffer here. If the exising slice is large enough
@@ -71,12 +74,23 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
                 rawData = try alloc.alloc(u8, compressedSize);
             }
 
+            const uncompressedSize = localFile.metadata.uncompressedSize;
+            if (output == null or output.?.len < uncompressedSize) {
+                if (output != null) {
+                    alloc.free(output.?);
+                }
+
+                output = try alloc.alloc(u8, uncompressedSize);
+            }
+
             const rawDataSlice = rawData.?[0..compressedSize];
             _ = try reader.read(rawDataSlice);
 
             var bitbuffer = BitBuffer.init(rawDataSlice);
 
-            try inflate(alloc, &bitbuffer, &writer);
+            try inflate(alloc, &bitbuffer, output.?);
+
+            _ = try file.write(output.?[0..uncompressedSize]);
         }
     }
 

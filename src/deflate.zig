@@ -2,7 +2,6 @@ const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
 const Allocator = @import("std").mem.Allocator;
 const BitBuffer = @import("bitbuffer.zig").BitBuffer;
-const Writer = @import("io.zig").Writer;
 const HuffmanTree = @import("huffman.zig").HuffmanTree;
 
 const RawInflate = @import("deflate/raw.zig").RawInflate;
@@ -32,14 +31,16 @@ const Inflatable = union(enum) {
         };
     }
 
-    fn inflate(self: Inflatable, buffer: *BitBuffer, writer: *Writer) !void {
+    fn inflate(self: Inflatable, buffer: *BitBuffer, out: []u8, current: *usize) !void {
         switch (self) {
-            inline else => |case| return case.inflate(buffer, writer),
+            inline else => |case| return case.inflate(buffer, out, current),
         }
     }
 };
 
-pub fn inflate(allocator: Allocator, buffer: *BitBuffer, writer: *Writer) !void {
+pub fn inflate(allocator: Allocator, buffer: *BitBuffer, out: []u8) !void {
+    var output_index: usize = 0;
+
     // TODO: This needs to happen in a loop! Each block can have a different
     // method
     const lastBlock = buffer.get(1);
@@ -52,5 +53,5 @@ pub fn inflate(allocator: Allocator, buffer: *BitBuffer, writer: *Writer) !void 
     }
 
     const inflatable = Inflatable.initFrom(method, allocator);
-    try inflatable.inflate(buffer, writer);
+    try inflatable.inflate(buffer, out, &output_index);
 }
