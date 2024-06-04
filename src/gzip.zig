@@ -86,7 +86,32 @@ const HuffmanTree = struct {
         // NOTE:
         // Step 0 - Allocate our huffman tree, this block of memory will be managed
         // by this struct. We will dealocate this tree when `deinit` is called
+
+        // NOTE: We can guarantee that all nodes will fit in this amount of memory
+        // because a huffman tree is by definition a "Full Binary Tree"
+        // if this wasn't the case then there would be binary patterns that are not
+        // associated with literal values. A full binary tree with N leaves will always
+        // have 2*N-1 total nodes.
+        //
+        // NOTE:
+        // Proof
+        // N = number of leaves (i.e. literals),
+        // I = number of internal nodes,
+        // T = Total Nodes (i.e. size of our tree to allocate)
+        // T = N + I
+        // I = T - N
+        // Total number of Edges, E:
+        // E = I * 2 => For a full tree every internal node has an edge to another node
+        // E = T - 1 => Every node except the root has an edge referencing it
+        // E = I * 2 = T - 1
+        // (T - N) * 2 = T - 1
+        // 2T - 2N = T - 1
+        // -T       -T
+        //  T - 2N = -1
+        //    + 2N =    + 2N
+        // T = 2N - 1
         const tree = try allocator.alloc(i16, lengths.len * 2);
+        @memset(tree, -1);
         var huff_tree = HuffmanTree{
             .tree = tree,
             .end = 0,
@@ -131,7 +156,11 @@ const HuffmanTree = struct {
 
         // NOTE:
         // Step 4 - Insert the codes/literals into the huffman tree
-        try self.insert_node();
+        if (self.end >= self.tree.len) {
+            panic("Extra node was attempted to be inserted into the Huffman tree", .{});
+        }
+
+        self.end += 2;
         for (generated_codes, 0..) |gen_code, i| {
             const bit_length = lengths[i];
 
@@ -141,48 +170,51 @@ const HuffmanTree = struct {
                     panic("Node doesn't exist", .{});
                 }
 
+                // NOTE: We adjust the current tree_index by determining if we're looking at
+                // a left or right node
                 tree_index = tree_index + (gen_code >> @truncate(bit_length - offset - 1) & 1);
 
                 if (offset == (bit_length - 1)) {
+                    // NOTE: This condition is the last iteration
+                    // and we want to place the literal value
                     const literal: u16 = @truncate(i);
                     self.tree[tree_index] = @bitCast(literal);
                 } else if (self.tree[tree_index] == -1) {
+                    if (self.end >= self.tree.len) {
+                        panic("Extra node was attempted to be inserted into the Huffman tree", .{});
+                    }
+
+                    // NOTE: We need to insert a node if there isn't anything there
                     self.tree[tree_index] = @bitCast(~self.end);
-                    try self.insert_node();
+                    self.end += 2;
                 }
 
                 const symbol = self.tree[tree_index];
 
                 if (symbol < 0) {
+                    // NOTE: take the 1s compliment to convert our number into a
+                    // valid index
                     tree_index = @bitCast(~symbol);
                 } else if (offset < bit_length - 1) {
+                    // NOTE: We should never see a positive number
+                    // unless we're on the last iteration
                     panic("Unexpected terminating node", .{});
                 }
             }
-
-            print("\n", .{});
         }
     }
 
-    fn insert_node(self: *Self) !void {
-        try self.insert(-1);
-        try self.insert(-1);
-    }
+    fn lookup(self: *Self, bit_buffer: *BitBuffer) u16 {
+        var index: u16 = @truncate(bit_buffer.get(1));
 
-    fn insert(self: *Self, node: i16) !void {
-        if (self.end == self.tree.len) {
-            try self.resize();
+        var value = self.tree[index];
+        while (value < 0) {
+            index = @bitCast(~value);
+            index += @truncate(bit_buffer.get(1));
+            value = self.tree[index];
         }
 
-        self.tree[self.end] = node;
-        self.end += 1;
-    }
-
-    fn resize(self: *Self) !void {
-        const new_tree = try self.allocator.alloc(i16, self.tree.len * 2);
-        @memcpy(new_tree[0..self.tree.len], self.tree);
-        self.allocator.free(self.tree);
-        self.tree = new_tree;
+        return @bitCast(value);
     }
 
     fn deinit(self: Self) void {
@@ -201,5 +233,19 @@ test "Construct a huffman tree" {
 
     for (0..tree.end) |i| {
         try testing.expect(expected_tree[i] == tree.tree[i]);
+    }
+
+    // 11001010  11111110  10111010  10111110
+    const buffer = [_]u8{ 0xca, 0xfe, 0xba, 0xbe, 0xfa };
+    var bit_buffer = BitBuffer.init(&buffer);
+
+    const expected_decode = "ACEHGDEDHADH";
+    var i: usize = 0;
+    while (!bit_buffer.end()) {
+        const val = @as(u8, @truncate(tree.lookup(&bit_buffer))) + 'A';
+
+        try testing.expect(expected_decode[i] == val);
+
+        i += 1;
     }
 }

@@ -30,21 +30,27 @@ pub const BitBuffer = struct {
         self.dataCursor += 1;
     }
 
+    pub fn end(self: BitBuffer) bool {
+        return self.dataCursor == self.data.len and self.bufferCursor == 0;
+    }
+
     pub fn get(self: *BitBuffer, num: u8) u32 {
         if (num > 32) {
             // At most we can extract out 32 bits
             return 0;
         }
 
-        while (self.bufferCursor < num) {
+        while (self.bufferCursor < num and self.dataCursor < self.data.len) {
             self.load();
         }
 
-        const mask: u64 = (@as(u64, 1) << @truncate(num)) - 1;
+        const num_bits = if (num > self.bufferCursor) self.bufferCursor else num;
+
+        const mask: u64 = (@as(u64, 1) << @truncate(num_bits)) - 1;
         const value = mask & self.buffer;
 
-        self.buffer = self.buffer >> @truncate(num);
-        self.bufferCursor -= num;
+        self.buffer = self.buffer >> @truncate(num_bits);
+        self.bufferCursor -= num_bits;
 
         return @truncate(value);
     }
@@ -88,4 +94,39 @@ test "Loading big numbers" {
     // This will be allowed (max bits) but will have 38 bits in our buffer at some point.
     const n2 = buffer.get(32);
     try testing.expect(n2 == 0x50403cda);
+}
+
+// TODO: What should we do if we read after end is true?
+test "Empty BitBuffer" {
+    const data = [_]u8{ 0xab, 0xcd };
+    var buffer = BitBuffer.init(&data);
+
+    try testing.expect(!buffer.end());
+
+    _ = buffer.get(4);
+    try testing.expect(!buffer.end());
+
+    _ = buffer.get(3);
+    try testing.expect(!buffer.end());
+
+    _ = buffer.get(1);
+    try testing.expect(!buffer.end());
+
+    // end of first byte
+
+    _ = buffer.get(5);
+    try testing.expect(!buffer.end());
+
+    // 1
+    const n1 = buffer.get(2);
+    try testing.expect(n1 == 2);
+    try testing.expect(!buffer.end());
+
+    const n2 = buffer.get(2);
+    try testing.expect(n2 == 1);
+    try testing.expect(buffer.end());
+
+    const n3 = buffer.get(2);
+    try testing.expect(n3 == 0);
+    try testing.expect(buffer.end());
 }
