@@ -1,88 +1,18 @@
-const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
+const print = @import("std").debug.print;
 const Allocator = @import("std").mem.Allocator;
-const BitBuffer = @import("./bitbuffer.zig").BitBuffer;
-const Writer = @import("./io.zig").Writer;
-
 const testing = @import("std").testing;
 
-const EncodingMethod = enum(u32) {
-    Raw = 0,
-    StaticHuffman = 1,
-    DynamicHuffman = 2,
-    Reserved = 3,
-};
+const BitBuffer = @import("bitbuffer.zig").BitBuffer;
 
-pub fn inflate(buffer: *BitBuffer, writer: *Writer) !void {
-    const lastBlock = buffer.get(1);
-    const encodingMethod: EncodingMethod = @enumFromInt(buffer.get(2));
-
-    if (lastBlock == 1) {
-        print("Last block!\n", .{});
-    } else {
-        print("More blocks remain...\n", .{});
-    }
-
-    switch (encodingMethod) {
-        .Raw => try raw_inflate(buffer, writer),
-        .StaticHuffman => try static_inflate(buffer, writer),
-        .DynamicHuffman => try dynamic_inflate(buffer, writer),
-        else => {
-            panic("Encoding method is reserved\n", .{});
-        },
-    }
-}
-
-fn raw_inflate(_: *BitBuffer, writer: *Writer) !void {
-    print("Writing raw data...", .{});
-    _ = try writer.write("Raw data isn't implemented, skipping...\n");
-}
-
-fn static_inflate(_: *BitBuffer, writer: *Writer) !void {
-    print("Static inflate...", .{});
-    _ = try writer.write("Static huffman isn't implemented, skipping...\n");
-}
-
-const HUFFMAN_CODE_LITERAL_ORDER = [_]usize{ 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
-
-fn dynamic_inflate(buffer: *BitBuffer, writer: *Writer) !void {
-    print("Dynamic inflate...\n", .{});
-
-    const huffman_literal_count = buffer.get(5) + 257;
-    const huffman_distance_count = buffer.get(5) + 1;
-    const huffman_code_count = buffer.get(4) + 4;
-
-    print("HLIT={d} HDIST={d} HCLEN={d}\n", .{
-        huffman_literal_count,
-        huffman_distance_count,
-        huffman_code_count,
-    });
-
-    var huffman_code_lengths: [HUFFMAN_CODE_LITERAL_ORDER.len]u32 = undefined;
-    @memset(&huffman_code_lengths, 0);
-
-    for (0..huffman_code_count) |i| {
-        const len = buffer.get(3);
-        const literal_index = HUFFMAN_CODE_LITERAL_ORDER[i];
-
-        huffman_code_lengths[literal_index] = len;
-    }
-
-    for (huffman_code_lengths, 0..) |len, i| {
-        print("  {d} {d}\n", .{ i, len });
-    }
-
-    _ = try writer.write("Dynamic huffman isn't implemented, skipping...\n");
-}
-
-const HuffmanTree = struct {
+pub const HuffmanTree = struct {
     tree: []i16,
     end: u16,
     allocator: Allocator,
 
     const Self = @This();
 
-    fn init(allocator: Allocator, lengths: []const u8) !HuffmanTree {
+    pub fn init(allocator: Allocator, lengths: []const u8) !HuffmanTree {
         // NOTE:
         // Step 0 - Allocate our huffman tree, this block of memory will be managed
         // by this struct. We will dealocate this tree when `deinit` is called
@@ -204,7 +134,7 @@ const HuffmanTree = struct {
         }
     }
 
-    fn lookup(self: *Self, bit_buffer: *BitBuffer) u16 {
+    pub fn lookup(self: *Self, bit_buffer: *BitBuffer) u16 {
         var index: u16 = @truncate(bit_buffer.get(1));
 
         var value = self.tree[index];
@@ -217,7 +147,7 @@ const HuffmanTree = struct {
         return @bitCast(value);
     }
 
-    fn deinit(self: Self) void {
+    pub fn deinit(self: Self) void {
         self.allocator.free(self.tree);
     }
 };
@@ -229,16 +159,17 @@ test "Construct a huffman tree" {
     var tree = try HuffmanTree.init(testing.allocator, &lengths);
     defer tree.deinit();
 
+    // Assert what the actual tree looks like
     const expected_tree = [_]i16{ -3, -7, 5, -5, 0, 1, -9, -11, 2, 3, 4, -13, 6, 7 };
-
     for (0..tree.end) |i| {
         try testing.expect(expected_tree[i] == tree.tree[i]);
     }
 
-    // 11001010  11111110  10111010  10111110
+    // Create the mock compressed file
     const buffer = [_]u8{ 0xca, 0xfe, 0xba, 0xbe, 0xfa };
     var bit_buffer = BitBuffer.init(&buffer);
 
+    // Assert the decoded data
     const expected_decode = "ACEHGDEDHADH";
     var i: usize = 0;
     while (!bit_buffer.end()) {

@@ -1,8 +1,8 @@
 const std = @import("std");
-const Args = @import("./args.zig").Args;
-const ReadSeeker = @import("./io.zig").ReadSeeker;
+const Args = @import("args.zig").Args;
+const ReadSeeker = @import("io.zig").ReadSeeker;
 
-const zip = @import("./zip.zig");
+const zip = @import("zip.zig");
 
 pub fn main() !void {
     const alloc = std.heap.page_allocator;

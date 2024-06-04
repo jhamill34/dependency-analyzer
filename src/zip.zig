@@ -1,18 +1,20 @@
 const Allocator = @import("std").mem.Allocator;
+const ArenaAllocator = @import("std").heap.ArenaAllocator;
+const File = @import("std").fs.File;
 const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
 
 const std = @import("std");
 
-const ReadSeeker = @import("./io.zig").ReadSeeker;
+const ReadSeeker = @import("io.zig").ReadSeeker;
 
-const ReadManager = @import("./reader.zig").ReadManager;
-const sliceToNumber = @import("./reader.zig").sliceToNumber;
+const ReadManager = @import("reader.zig").ReadManager;
+const sliceToNumber = @import("reader.zig").sliceToNumber;
 
-const BitBuffer = @import("./bitbuffer.zig").BitBuffer;
-const FileWriter = @import("./writer.zig").FileWriter;
+const BitBuffer = @import("bitbuffer.zig").BitBuffer;
+const FileWriter = @import("writer.zig").FileWriter;
 
-const inflate = @import("./gzip.zig").inflate;
+const inflate = @import("deflate.zig").inflate;
 
 pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
     var buffer: [4096]u8 = undefined;
@@ -27,44 +29,67 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
 
     try reader.setCursor(eocd.metadata.centralDirectoryOffset);
 
-    var records = try alloc.alloc(CentralDirectoryFile, eocd.metadata.recordCount);
+    var arena = ArenaAllocator.init(alloc);
+    defer arena.deinit();
 
-    var currentRecord: u16 = 0;
-    while (currentRecord < eocd.metadata.recordCount) {
-        const record = try CentralDirectoryFile.initFromReader(alloc, &reader);
-        records[currentRecord] = record;
-        currentRecord += 1;
+    const arena_allocator = arena.allocator();
+    var records = try arena_allocator.alloc(CentralDirectoryFile, eocd.metadata.recordCount);
+    for (0..eocd.metadata.recordCount) |currentRecord| {
+        records[currentRecord] = try CentralDirectoryFile.initFromReader(arena_allocator, &reader);
     }
 
+    var rawData: ?[]u8 = null;
+
+    // TODO: Can this be threaded?
     for (records) |record| {
         if (record.metadata.compressedSize > 0) {
             try reader.setCursor(record.metadata.relativeFileOffset);
-            const localFile = try FileHeader.initFromReader(alloc, &reader);
+
+            // NOTE: even though the localFile goes out of scope the memory allocated
+            // might seem like its leaked but since they're part of
+            // the arena allocator they'll get cleaned up at the end of this function.
+            const localFile = try FileHeader.initFromReader(arena_allocator, &reader);
 
             print("{s} (size: {d}, method: {d})\n", .{ localFile.fileName.?, localFile.metadata.compressedSize, localFile.metadata.method });
 
-            const dirname = std.fs.path.dirname(localFile.fileName.?);
-            try std.fs.cwd().makePath(dirname.?);
-            var file = try std.fs.cwd().createFile(localFile.fileName.?, .{});
-
+            var file = try createFile(localFile.fileName.?);
+            defer file.close();
             var writer = FileWriter.writer(&file);
 
-            const rawData = try reader.readAlloc(alloc, localFile.metadata.compressedSize);
-            var bitbuffer = BitBuffer.init(
-                rawData,
-            );
+            // NOTE: To limit the number of times we need to ask the heap for
+            // memory we use a shared buffer here. If the exising slice is large enough
+            // we'll just use those memory locations and overwrite data as needed.
+            // If we can't fit our data in there we'll just grow the slice to the
+            // correct size by freeing the existing slice and reallocating the
+            // correct amount.
+            const compressedSize = localFile.metadata.compressedSize;
+            if (rawData == null or rawData.?.len < compressedSize) {
+                if (rawData != null) {
+                    alloc.free(rawData.?);
+                }
 
-            try inflate(&bitbuffer, &writer);
+                rawData = try alloc.alloc(u8, compressedSize);
+            }
 
-            file.close();
-            alloc.free(rawData);
+            const rawDataSlice = rawData.?[0..compressedSize];
+            _ = try reader.read(rawDataSlice);
 
-            localFile.deinit();
+            var bitbuffer = BitBuffer.init(rawDataSlice);
+
+            try inflate(alloc, &bitbuffer, &writer);
         }
-
-        record.deinit();
     }
-    alloc.free(records);
+
+    if (rawData != null) {
+        alloc.free(rawData.?);
+    }
+}
+
+fn createFile(fileName: []const u8) !File {
+    const dirname = std.fs.path.dirname(fileName);
+    try std.fs.cwd().makePath(dirname.?);
+
+    return try std.fs.cwd().createFile(fileName, .{});
 }
 
 const ZipError = error{
