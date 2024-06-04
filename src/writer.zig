@@ -10,7 +10,7 @@ pub const FileWriter = struct {
         };
     }
 
-    pub fn writeFn(ptr: *anyopaque, data: []const u8) !usize {
+    pub fn writeFn(ptr: *anyopaque, _: []const u8, data: []const u8) !usize {
         const self: *std.fs.File = @ptrCast(@alignCast(ptr));
         return self.write(data);
     }

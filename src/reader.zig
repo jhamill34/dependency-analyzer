@@ -64,6 +64,24 @@ pub const ReadManager = struct {
         return value;
     }
 
+    pub fn readBENumber(self: *Self, T: type) !T {
+        const size = @sizeOf(T);
+
+        const bytesLeft = self.loaded - self.current;
+        if (bytesLeft < size) {
+            try self.loadData();
+        }
+
+        var value: T = 0;
+        for (self.buffer[self.current..][0..size], 0..) |b, i| {
+            value |= @as(T, b) << @truncate(8 * (size - i - 1));
+        }
+
+        self.current += size;
+
+        return value;
+    }
+
     pub fn readStruct(self: *Self, T: type) !T {
         const typeInfo = @typeInfo(T);
 
@@ -127,20 +145,20 @@ pub fn sliceToNumber(T: type, buffer: []u8) T {
     return value;
 }
 
-const TestSeeker = struct {
+pub const BufferSeeker = struct {
     buffer: []const u8,
     cursor: usize,
     systemCalls: u8,
 
-    fn init(buffer: []u8) TestSeeker {
-        return TestSeeker{
+    pub fn init(buffer: []const u8) BufferSeeker {
+        return BufferSeeker{
             .buffer = buffer,
             .cursor = 0,
             .systemCalls = 0,
         };
     }
 
-    fn reader(self: *TestSeeker) ReadSeeker {
+    pub fn reader(self: *BufferSeeker) ReadSeeker {
         return ReadSeeker{
             .ptr = self,
             .readFn = readFn,
@@ -150,7 +168,7 @@ const TestSeeker = struct {
     }
 
     fn readFn(ptr: *anyopaque, data: []u8) !usize {
-        const self: *TestSeeker = @ptrCast(@alignCast(ptr));
+        const self: *BufferSeeker = @ptrCast(@alignCast(ptr));
         const bytesLeft = self.buffer.len - self.cursor;
 
         if (bytesLeft == 0) {
@@ -171,12 +189,12 @@ const TestSeeker = struct {
     }
 
     fn seekToFn(ptr: *anyopaque, location: u64) !void {
-        const self: *TestSeeker = @ptrCast(@alignCast(ptr));
+        const self: *BufferSeeker = @ptrCast(@alignCast(ptr));
         self.cursor = location;
     }
 
     fn getEndPosFn(ptr: *anyopaque) !u64 {
-        const self: *TestSeeker = @ptrCast(@alignCast(ptr));
+        const self: *BufferSeeker = @ptrCast(@alignCast(ptr));
         return self.buffer.len - 1;
     }
 };
@@ -196,7 +214,7 @@ test "Simple Reader" {
 
     // This is mimicing a file
     var data = [_]u8{ 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00 };
-    var testSeeker = TestSeeker.init(&data);
+    var testSeeker = BufferSeeker.init(&data);
 
     // Create our interface
     const readSeeker = (&testSeeker).reader();
@@ -223,7 +241,7 @@ test "Simple Reader of structs" {
     var buffer: [4]u8 = undefined;
 
     var data = [_]u8{ 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00 };
-    var testSeeker = TestSeeker.init(&data);
+    var testSeeker = BufferSeeker.init(&data);
 
     const readSeeker = (&testSeeker).reader();
 
@@ -247,7 +265,7 @@ test "Simple Reader into buffer" {
         'l',  'l',  'o', 0x02,
         0x00, 0x00,
     };
-    var testSeeker = TestSeeker.init(&data);
+    var testSeeker = BufferSeeker.init(&data);
 
     const readSeeker = (&testSeeker).reader();
 
@@ -276,7 +294,7 @@ test "Jump Cursor around" {
         'l',  'l',  'o', 0x02,
         0xab, 0xcd,
     };
-    var testSeeker = TestSeeker.init(&data);
+    var testSeeker = BufferSeeker.init(&data);
 
     const readSeeker = (&testSeeker).reader();
 

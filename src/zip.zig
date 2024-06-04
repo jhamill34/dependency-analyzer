@@ -12,10 +12,11 @@ const ReadManager = @import("reader.zig").ReadManager;
 const sliceToNumber = @import("reader.zig").sliceToNumber;
 
 const BitBuffer = @import("bitbuffer.zig").BitBuffer;
+const Writer = @import("io.zig").Writer;
 
 const inflate = @import("deflate.zig").inflate;
 
-pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
+pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker, writer: Writer) !void {
     var buffer: [4096]u8 = undefined;
     var reader = ReadManager.init(readSeeker, &buffer);
 
@@ -50,15 +51,6 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
             // the arena allocator they'll get cleaned up at the end of this function.
             const localFile = try FileHeader.initFromReader(arena_allocator, &reader);
 
-            print("{s} (size: {d}, method: {d})\n", .{
-                localFile.fileName.?,
-                localFile.metadata.compressedSize,
-                localFile.metadata.method,
-            });
-
-            var file = try createFile(localFile.fileName.?);
-            defer file.close();
-
             // NOTE: To limit the number of times we need to ask the heap for
             // memory we use a shared buffer here. If the exising slice is large enough
             // we'll just use those memory locations and overwrite data as needed.
@@ -89,8 +81,7 @@ pub fn extractFromArchive(alloc: Allocator, readSeeker: ReadSeeker) !void {
             var bitbuffer = BitBuffer.init(rawDataSlice);
 
             try inflate(alloc, &bitbuffer, output.?);
-
-            _ = try file.write(output.?[0..uncompressedSize]);
+            _ = try writer.write(localFile.fileName.?, output.?);
         }
     }
 

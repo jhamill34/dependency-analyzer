@@ -1,6 +1,7 @@
 const std = @import("std");
 const Args = @import("args.zig").Args;
 const ReadSeeker = @import("io.zig").ReadSeeker;
+const BytecodeWriter = @import("bytecode.zig").BytecodeWriter;
 
 const zip = @import("zip.zig");
 
@@ -16,8 +17,11 @@ pub fn main() !void {
     defer file.close();
 
     const readSeeker = FileReadSeeker.reader(&file);
+    var bytecodeWriter = BytecodeWriter{
+        .allocator = alloc,
+    };
 
-    try zip.extractFromArchive(alloc, readSeeker);
+    try zip.extractFromArchive(alloc, readSeeker, bytecodeWriter.writer());
 }
 
 fn getArgs(alloc: std.mem.Allocator) Args {

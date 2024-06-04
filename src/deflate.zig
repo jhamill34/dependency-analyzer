@@ -22,7 +22,7 @@ const Inflatable = union(enum) {
 
     fn initFrom(method: EncodingMethod, allocator: Allocator) Inflatable {
         return switch (method) {
-            .raw => Inflatable{ .raw = RawInflate{ .allocator = allocator } },
+            .raw => Inflatable{ .raw = RawInflate{} },
             .static_huffman => Inflatable{ .static = StaticInflate{ .allocator = allocator } },
             .dynamic_huffman => Inflatable{ .dynamic = DynamicInflate{ .allocator = allocator } },
             else => {

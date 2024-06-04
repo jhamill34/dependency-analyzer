@@ -19,9 +19,9 @@ pub const ReadSeeker = struct {
 
 pub const Writer = struct {
     ptr: *anyopaque,
-    writeFn: *const fn (ptr: *anyopaque, data: []const u8) anyerror!usize,
+    writeFn: *const fn (ptr: *anyopaque, filename: []const u8, data: []const u8) anyerror!usize,
 
-    pub fn write(self: Writer, data: []const u8) !usize {
-        return self.writeFn(self.ptr, data);
+    pub fn write(self: Writer, filename: []const u8, data: []const u8) !usize {
+        return self.writeFn(self.ptr, filename, data);
     }
 };
