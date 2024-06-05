@@ -1,3 +1,4 @@
+const print = @import("std").debug.print;
 const panic = @import("std").debug.panic;
 
 const Allocator = @import("std").mem.Allocator;
@@ -130,6 +131,8 @@ pub const ReadManager = struct {
 
         var dataIndex: usize = 0;
         var remainingData = data.len - dataIndex;
+
+        // TODO: This can become an infinite loop if we try to request more data than is available...
         while (remainingData > bytesLeft) {
             @memcpy(data[dataIndex..][0..bytesLeft], self.buffer[self.current..][0..bytesLeft]);
 
