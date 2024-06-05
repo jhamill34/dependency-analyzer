@@ -101,6 +101,25 @@ pub const ReadManager = struct {
         return result;
     }
 
+    pub fn readBEStruct(self: *Self, T: type) !T {
+        const typeInfo = @typeInfo(T);
+
+        var result: T = undefined;
+
+        inline for (typeInfo.Struct.fields) |f| {
+            switch (@typeInfo(f.type)) {
+                .Int => {
+                    @field(result, f.name) = try self.readBENumber(f.type);
+                },
+                else => {
+                    panic("Unknown serialization type", .{});
+                },
+            }
+        }
+
+        return result;
+    }
+
     pub fn read(self: *Self, data: []u8) !usize {
         var bytesLeft = self.loaded - self.current;
         if (bytesLeft >= data.len) {
