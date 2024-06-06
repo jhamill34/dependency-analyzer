@@ -33,6 +33,7 @@ pub const BytecodeWriter = struct {
         }
 
         var infoBuffer: [128]u8 = [_]u8{0} ** 128;
+        var codeBuffer: [128]u8 = [_]u8{0} ** 128;
         const class = try ClassFile.initFromReader(self.allocator, &readManager);
         for (class.fields) |f| {
             const name = class.constants[f.name_index];
@@ -79,6 +80,11 @@ pub const BytecodeWriter = struct {
                     .Code => |c| {
                         for (c.code) |b| {
                             std.debug.print("      {d}\n", .{b});
+                        }
+
+                        for (c.attributes) |ca| {
+                            const code_attr = try ca.decode(self.allocator, &codeBuffer, class.constants);
+                            std.debug.print("      {any}\n", .{code_attr});
                         }
                     },
                     else => {},
@@ -492,7 +498,7 @@ const AttributeInfo = struct {
                     .line_number_table = table,
                 },
             };
-        } else if (eql(u8, name, "LocalVariableTypeTable")) {
+        } else if (eql(u8, name, "LocalVariableTable")) {
             const table_length = try infoManager.readBENumber(u16);
             const table = try allocator.alloc(LocalVariable, table_length);
             for (0..table_length) |i| {
@@ -551,7 +557,7 @@ const AttributeInfo = struct {
                 },
             };
         } else {
-            unreachable;
+            std.debug.panic("Unknown attribute name: {s}\n", .{name});
         }
     }
 };
