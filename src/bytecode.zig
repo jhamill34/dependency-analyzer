@@ -74,7 +74,15 @@ pub const BytecodeWriter = struct {
             std.debug.print("\n", .{});
 
             for (m.attributes) |ma| {
-                try ma.decode(&infoBuffer, class.constants);
+                const attr = try ma.decode(self.allocator, &infoBuffer, class.constants);
+                switch (attr) {
+                    .Code => |c| {
+                        for (c.code) |b| {
+                            std.debug.print("      {d}\n", .{b});
+                        }
+                    },
+                    else => {},
+                }
             }
         }
 
@@ -198,7 +206,169 @@ const FieldInfo = struct {
     }
 };
 
-const ConstantValueAttribute = struct {};
+// NOTE: Section 4.7.2
+const ConstantValueAttribute = struct {
+    constantvalue_index: u16,
+};
+
+// NOTE: Section 4.7.3
+const CodeAttribute = struct {
+    max_stack: u16,
+    max_locals: u16,
+    code: []const u8,
+    exception_table: []Exception,
+    attributes: []AttributeInfo,
+};
+
+const Exception = struct {
+    start_pc: u16,
+    end_pc: u16,
+    handler_pc: u16,
+    catch_type: u16,
+};
+
+// NOTE: Section 4.7.4
+const StackMapTableAttribute = struct {
+    // TODO:
+};
+
+// NOTE: Section 4.7.5
+const ExceptionsAttribute = struct {
+    exception_index_table: []u16,
+};
+
+// NOTE: Section 4.7.6
+const InnerClassesAttribute = struct {
+    classes: []InnerClass,
+};
+
+const InnerClass = struct {
+    inner_class_info_index: u16,
+    outer_class_info_index: u16,
+    inner_name_index: u16,
+    inner_class_access_flags: u16,
+};
+
+// NOTE: Section 4.7.7
+const EnclosingMethodAttribute = struct {
+    class_index: u16,
+    method_index: u16,
+};
+
+// NOTE: Section 4.7.8
+const SyntheticAttribute = struct {};
+
+// NOTE: Section 4.7.9
+const SignatureAttribute = struct {
+    signature_index: u16,
+};
+
+// NOTE: Section 4.7.10
+const SourceFileAttribute = struct {
+    source_file_index: u16,
+};
+
+// NOTE: Section 4.7.11
+const SourceDebugExtensionAttribute = struct {
+    debug_extension: []const u8,
+};
+
+// NOTE: Section 4.7.12
+const LineNumberTableAttribute = struct {
+    line_number_table: []LineNumber,
+};
+
+const LineNumber = struct {
+    start_pc: u16,
+    line_number: u16,
+};
+
+// NOTE: Section 4.7.13
+const LocalVariableTableAttribute = struct {
+    local_variable_table: []LocalVariable,
+};
+
+const LocalVariable = struct {
+    start_pc: u16,
+    length: u16,
+    name_index: u16,
+    descriptor_index: u16,
+    index: u16,
+};
+
+// NOTE: Section 4.7.14
+const LocalVariableTypeTableAttribute = struct {
+    local_variable_type_table: []LocalVariableType,
+};
+
+const LocalVariableType = struct {
+    start_pc: u16,
+    length: u16,
+    name_index: u16,
+    signature_index: u16,
+    index: u16,
+};
+
+// NOTE: Section 4.7.15
+const DeprecatedAttribute = struct {};
+
+// NOTE: Section 4.7.16
+const RuntimeVisibleAnnotationsAttribute = struct {
+    // TODO:
+};
+
+// NOTE: Section 4.7.17
+const RuntimeInvisibleAnnotationsAttribute = struct {
+    // TODO:
+};
+
+// NOTE: Section 4.7.18
+const RuntimeVisibleParameterAnnotationsAttribute = struct {
+    // TODO:
+};
+
+// NOTE: Section 4.7.19
+const RuntimeInvisibleParameterAnnotationsAttribute = struct {
+    // TODO:
+};
+
+// NOTE: Section 4.7.20
+const AnnotationDefaultAttribute = struct {
+    // TODO:
+};
+
+// NOTE: Section 4.7.21
+const BootstrapMethodsAttribute = struct {
+    bootstrap_methods: []BootstrapMethod,
+};
+
+const BootstrapMethod = struct {
+    bootstrap_method_ref: u16,
+    bootstrap_arguments: []u16,
+};
+
+const AttribueInfoDetails = union(enum) {
+    ConstantValue: ConstantValueAttribute,
+    Code: CodeAttribute,
+    StackMapTable: StackMapTableAttribute,
+    Exceptions: ExceptionsAttribute,
+    InnerClasses: InnerClassesAttribute,
+    EnclosingMethod: EnclosingMethodAttribute,
+    Synthetic: SyntheticAttribute,
+    Signature: SignatureAttribute,
+    SourceFile: SourceFileAttribute,
+    SourceDebugExtension: SourceDebugExtensionAttribute,
+    LineNumberTable: LineNumberTableAttribute,
+    LocalVariableTable: LocalVariableTableAttribute,
+    LocalVariableTypeTable: LocalVariableTypeTableAttribute,
+    Deprecated: DeprecatedAttribute,
+    RuntimeVisibleAnnotations: RuntimeVisibleAnnotationsAttribute,
+    RuntimeInvisibleAnnotations: RuntimeInvisibleAnnotationsAttribute,
+    RuntimeVisibleParameterAnnotations: RuntimeVisibleParameterAnnotationsAttribute,
+    RuntimeInvisibleParameterAnnotations: RuntimeInvisibleParameterAnnotationsAttribute,
+    AnnotationDefault: AnnotationDefaultAttribute,
+    BootstrapMethods: BootstrapMethodsAttribute,
+};
 
 const AttributeInfo = struct {
     attribute_name_index: u16,
@@ -216,7 +386,7 @@ const AttributeInfo = struct {
         };
     }
 
-    fn decode(self: AttributeInfo, buffer: []u8, constantTable: []Constant) !void {
+    fn decode(self: AttributeInfo, allocator: Allocator, buffer: []u8, constantTable: []Constant) !AttribueInfoDetails {
         var infoSeeker = reader.BufferSeeker.init(self.info);
         var infoManager = reader.ReadManager.init(infoSeeker.reader(), buffer);
 
@@ -229,9 +399,159 @@ const AttributeInfo = struct {
 
         if (eql(u8, name, "Code")) {
             const max_stack = try infoManager.readBENumber(u16);
-            std.debug.print("Its a code, stack size is {d}\n", .{max_stack});
+            const max_locals = try infoManager.readBENumber(u16);
+            const code_length = try infoManager.readBENumber(u32);
+
+            const code = try allocator.alloc(u8, code_length);
+            _ = try infoManager.read(code);
+
+            const exception_length = try infoManager.readBENumber(u16);
+            const exceptions = try allocator.alloc(Exception, exception_length);
+            for (0..exception_length) |i| {
+                exceptions[i] = try infoManager.readBEStruct(Exception);
+            }
+
+            const attribute_length = try infoManager.readBENumber(u16);
+            const attributes = try allocator.alloc(AttributeInfo, attribute_length);
+            for (0..attribute_length) |i| {
+                attributes[i] = try AttributeInfo.initFromReader(allocator, &infoManager);
+            }
+
+            const code_attr = CodeAttribute{
+                .max_stack = max_stack,
+                .max_locals = max_locals,
+                .code = code,
+                .exception_table = exceptions,
+                .attributes = attributes,
+            };
+
+            return AttribueInfoDetails{ .Code = code_attr };
+        } else if (eql(u8, name, "ConstantValue")) {
+            const constant = try infoManager.readBEStruct(ConstantValueAttribute);
+
+            return AttribueInfoDetails{ .ConstantValue = constant };
+        } else if (eql(u8, name, "StackMapTable")) {
+            return AttribueInfoDetails{ .StackMapTable = StackMapTableAttribute{} };
+        } else if (eql(u8, name, "Exceptions")) {
+            const exceptions_count = try infoManager.readBENumber(u16);
+            const exceptions = try allocator.alloc(u16, exceptions_count);
+            for (0..exceptions_count) |i| {
+                exceptions[i] = try infoManager.readBENumber(u16);
+            }
+
+            return AttribueInfoDetails{
+                .Exceptions = ExceptionsAttribute{
+                    .exception_index_table = exceptions,
+                },
+            };
+        } else if (eql(u8, name, "InnerClasses")) {
+            const number_classes = try infoManager.readBENumber(u16);
+            const classes = try allocator.alloc(InnerClass, number_classes);
+            for (0..number_classes) |i| {
+                classes[i] = try infoManager.readBEStruct(InnerClass);
+            }
+
+            return AttribueInfoDetails{
+                .InnerClasses = InnerClassesAttribute{
+                    .classes = classes,
+                },
+            };
+        } else if (eql(u8, name, "EnclosingMethod")) {
+            const encloding_method = try infoManager.readBEStruct(EnclosingMethodAttribute);
+
+            return AttribueInfoDetails{
+                .EnclosingMethod = encloding_method,
+            };
+        } else if (eql(u8, name, "Synthetic")) {
+            return AttribueInfoDetails{ .Synthetic = SyntheticAttribute{} };
+        } else if (eql(u8, name, "Signature")) {
+            const signature = try infoManager.readBEStruct(SignatureAttribute);
+            return AttribueInfoDetails{
+                .Signature = signature,
+            };
+        } else if (eql(u8, name, "SourceFile")) {
+            const source_file = try infoManager.readBEStruct(SourceFileAttribute);
+            return AttribueInfoDetails{
+                .SourceFile = source_file,
+            };
+        } else if (eql(u8, name, "SourceDebugExtension")) {
+            return AttribueInfoDetails{
+                .SourceDebugExtension = SourceDebugExtensionAttribute{
+                    .debug_extension = self.info,
+                },
+            };
+        } else if (eql(u8, name, "LineNumberTable")) {
+            const table_length = try infoManager.readBENumber(u16);
+            const table = try allocator.alloc(LineNumber, table_length);
+            for (0..table_length) |i| {
+                table[i] = try infoManager.readBEStruct(LineNumber);
+            }
+
+            return AttribueInfoDetails{
+                .LineNumberTable = LineNumberTableAttribute{
+                    .line_number_table = table,
+                },
+            };
+        } else if (eql(u8, name, "LocalVariableTypeTable")) {
+            const table_length = try infoManager.readBENumber(u16);
+            const table = try allocator.alloc(LocalVariable, table_length);
+            for (0..table_length) |i| {
+                table[i] = try infoManager.readBEStruct(LocalVariable);
+            }
+
+            return AttribueInfoDetails{
+                .LocalVariableTable = LocalVariableTableAttribute{
+                    .local_variable_table = table,
+                },
+            };
+        } else if (eql(u8, name, "LocalVariableTypeTable")) {
+            const table_length = try infoManager.readBENumber(u16);
+            const table = try allocator.alloc(LocalVariableType, table_length);
+            for (0..table_length) |i| {
+                table[i] = try infoManager.readBEStruct(LocalVariableType);
+            }
+
+            return AttribueInfoDetails{
+                .LocalVariableTypeTable = LocalVariableTypeTableAttribute{
+                    .local_variable_type_table = table,
+                },
+            };
+        } else if (eql(u8, name, "Deprecated")) {
+            return AttribueInfoDetails{ .Deprecated = DeprecatedAttribute{} };
+        } else if (eql(u8, name, "RuntimeVisibleAnnotations")) {
+            return AttribueInfoDetails{ .RuntimeVisibleAnnotations = RuntimeVisibleAnnotationsAttribute{} };
+        } else if (eql(u8, name, "RuntimeInvisibleAnnotations")) {
+            return AttribueInfoDetails{ .RuntimeInvisibleAnnotations = RuntimeInvisibleAnnotationsAttribute{} };
+        } else if (eql(u8, name, "RuntimeVisibleParameterAnnotations")) {
+            return AttribueInfoDetails{ .RuntimeVisibleParameterAnnotations = RuntimeVisibleParameterAnnotationsAttribute{} };
+        } else if (eql(u8, name, "RuntimeInvisibleParameterAnnotations")) {
+            return AttribueInfoDetails{ .RuntimeInvisibleParameterAnnotations = RuntimeInvisibleParameterAnnotationsAttribute{} };
+        } else if (eql(u8, name, "AnnotationDefault")) {
+            return AttribueInfoDetails{ .AnnotationDefault = AnnotationDefaultAttribute{} };
+        } else if (eql(u8, name, "BootstrapMethods")) {
+            const num_bootstrap_methods = try infoManager.readBENumber(u16);
+            const bootstrap_methods = try allocator.alloc(BootstrapMethod, num_bootstrap_methods);
+            for (0..num_bootstrap_methods) |i| {
+                const ref = try infoManager.readBENumber(u16);
+                const num_args = try infoManager.readBENumber(u16);
+                const args = try allocator.alloc(u16, num_args);
+                for (0..num_args) |j| {
+                    args[j] = try infoManager.readBENumber(u16);
+                }
+
+                bootstrap_methods[i] = BootstrapMethod{
+                    .bootstrap_method_ref = ref,
+                    .bootstrap_arguments = args,
+                };
+            }
+
+            return AttribueInfoDetails{
+                .BootstrapMethods = BootstrapMethodsAttribute{
+                    .bootstrap_methods = bootstrap_methods,
+                },
+            };
         } else {
-            std.debug.print(".... nope... \n", .{});
+            unreachable;
         }
     }
 };
